@@ -1,0 +1,605 @@
+import React, { useState, useEffect } from "react";
+import {
+  Table,
+  Button,
+  Badge,
+  Card,
+  Form,
+  Modal,
+  Spinner,
+  Alert,
+  InputGroup,
+  Pagination
+} from "react-bootstrap";
+import { 
+  FiEdit2, 
+  FiTrash2, 
+  FiCheck, 
+  FiX, 
+  FiCornerUpLeft,
+  FiFilter,
+  FiSearch,
+  FiRefreshCw
+} from "react-icons/fi";
+import { useNavigate } from "react-router-dom";
+import PermitForm from "./AddPermitForm";
+import { 
+  getAllPermits, 
+  approvePermit, 
+  returnPermit, 
+  editPermitDetails,
+  deletePermit,
+  getPermitStatusOptions,
+  getPermitTypeOptions
+} from "../helpers/permit-api";
+import toast, { Toaster } from "react-hot-toast";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+
+const getStatusBadge = (status) => {
+  const variant = {
+    'Pending': 'warning',
+    'Approved': 'success',
+    'Returned': 'danger',
+    'Closed': 'secondary'
+  }[status] || 'info';
+  
+  return <Badge bg={variant} className="text-capitalize">{status.toLowerCase()}</Badge>;
+};
+
+const PermitsTable = () => {
+  const [permits, setPermits] = useState([]);
+  const [filteredPermits, setFilteredPermits] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [actionLoading, setActionLoading] = useState(null);
+  const [userLevel, setUserLevel] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedPermit, setSelectedPermit] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    permitNumber: '',
+    poNumber: '',
+    employeeName: '',
+    permitType: '',
+    permitStatus: '',
+    fromDate: null,
+    toDate: null
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [perPage] = useState(10);
+  const [sortConfig, setSortConfig] = useState({ key: 'issueDate', direction: 'desc' });
+
+  const navigate = useNavigate();
+  const statusOptions = getPermitStatusOptions();
+  const typeOptions = getPermitTypeOptions();
+
+  const fetchPermits = async () => {
+    try {
+      setLoading(true);
+      const response = await getAllPermits();
+      setPermits(response.permits);
+      setFilteredPermits(response.permits);
+      
+      const userData = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user'));
+      if (userData) setUserLevel(userData.level);
+    } catch (err) {
+      setError(err.message || "Failed to fetch permits");
+      toast.error(err.message || "Failed to fetch permits");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPermits();
+  }, []);
+
+  useEffect(() => {
+    let results = [...permits];
+    
+    // Apply filters
+    if (filters.permitNumber) {
+      results = results.filter(p => 
+        p.permitNumber.toLowerCase().includes(filters.permitNumber.toLowerCase())
+      );
+    }
+    if (filters.poNumber) {
+      results = results.filter(p => 
+        p.poNumber.toLowerCase().includes(filters.poNumber.toLowerCase())
+      );
+    }
+    if (filters.employeeName) {
+      results = results.filter(p => 
+        p.employeeName.toLowerCase().includes(filters.employeeName.toLowerCase())
+      );
+    }
+    if (filters.permitType) {
+      results = results.filter(p => p.permitType === filters.permitType);
+    }
+    if (filters.permitStatus) {
+      results = results.filter(p => p.permitStatus === filters.permitStatus);
+    }
+    if (filters.fromDate) {
+      results = results.filter(p => new Date(p.issueDate) >= filters.fromDate);
+    }
+    if (filters.toDate) {
+      results = results.filter(p => new Date(p.issueDate) <= filters.toDate);
+    }
+    
+    // Apply sorting
+    if (sortConfig.key) {
+      results.sort((a, b) => {
+        if (a[sortConfig.key] < b[sortConfig.key]) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (a[sortConfig.key] > b[sortConfig.key]) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    
+    setFilteredPermits(results);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [permits, filters, sortConfig]);
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleDateChange = (date, field) => {
+    setFilters(prev => ({ ...prev, [field]: date }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      permitNumber: '',
+      poNumber: '',
+      employeeName: '',
+      permitType: '',
+      permitStatus: '',
+      fromDate: null,
+      toDate: null
+    });
+    setSortConfig({ key: 'issueDate', direction: 'desc' });
+  };
+
+  const handleSearchClick = () => navigate("/search");
+  const handleAddPermitClick = () => navigate("/add-permit");
+
+  const handleEditClick = (permit) => {
+    setSelectedPermit({
+      ...permit,
+      issueDate: new Date(permit.issueDate),
+      expiryDate: new Date(permit.expiryDate),
+    });
+    setShowEditModal(true);
+  };
+
+  const handleModalClose = () => {
+    setShowEditModal(false);
+    setSelectedPermit(null);
+  };
+
+  const handlePermitUpdated = async (updatedData) => {
+    try {
+      setActionLoading('updating');
+      await editPermitDetails(selectedPermit._id, updatedData);
+      await fetchPermits();
+      toast.success("Permit updated successfully!");
+      handleModalClose();
+    } catch (err) {
+      toast.error(err.message || "Failed to update permit");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleApprove = async (permitId) => {
+    try {
+      setActionLoading(`approve-${permitId}`);
+      await approvePermit(permitId);
+      await fetchPermits();
+      toast.success("Permit approved successfully!");
+    } catch (err) {
+      toast.error(err.message || "Failed to approve permit");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReturn = async (permitId) => {
+    const requiredChanges = prompt("Please specify required changes:");
+    if (!requiredChanges) return;
+
+    try {
+      setActionLoading(`return-${permitId}`);
+      await returnPermit(permitId, requiredChanges);
+      await fetchPermits();
+      toast.success("Permit returned for corrections!");
+    } catch (err) {
+      toast.error(err.message || "Failed to return permit");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDelete = async (permitId) => {
+    if (!window.confirm("Are you sure you want to delete this permit?")) return;
+    
+    try {
+      setActionLoading(`delete-${permitId}`);
+      await deletePermit(permitId);
+      await fetchPermits();
+      toast.success("Permit deleted successfully!");
+    } catch (err) {
+      toast.error(err.message || "Failed to delete permit");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const canTakeAction = (permit) => {
+    if (!userLevel) return false;
+    return permit.currentLevel === userLevel && permit.permitStatus === "Pending";
+  };
+
+  // Pagination logic
+  const indexOfLastPermit = currentPage * perPage;
+  const indexOfFirstPermit = indexOfLastPermit - perPage;
+  const currentPermits = filteredPermits.slice(indexOfFirstPermit, indexOfLastPermit);
+  const totalPages = Math.ceil(filteredPermits.length / perPage);
+
+  if (loading) {
+    return (
+      <div className="text-center my-5">
+        <Spinner animation="border" role="status" />
+        <p className="mt-2">Loading permits...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert variant="danger" className="text-center my-5">
+        {error}
+      </Alert>
+    );
+  }
+
+  return (
+    <>
+      <Toaster position="top-center" reverseOrder={false} />
+      <Card className="shadow-sm p-4 bg-light border-0">
+        <div className="d-flex justify-content-between align-items-center mb-4">
+          <div className="d-flex gap-2">
+            <Button variant="outline-dark" onClick={handleSearchClick}>
+              <FiSearch className="me-2" /> Search
+            </Button>
+            <Button 
+              variant={showFilters ? "primary" : "outline-secondary"} 
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <FiFilter className="me-2" /> Filters
+            </Button>
+          </div>
+          <div className="d-flex align-items-center gap-2">
+            <Button variant="outline-secondary" onClick={clearFilters}>
+              <FiRefreshCw /> Reset
+            </Button>
+            <Button variant="primary" onClick={handleAddPermitClick}>
+              + Create New Permit
+            </Button>
+          </div>
+        </div>
+
+        {showFilters && (
+          <Card className="mb-4 p-3">
+            <Row>
+              <Col md={3}>
+                <Form.Group>
+                  <Form.Label>Permit Number</Form.Label>
+                  <Form.Control
+                    type="text"
+                    name="permitNumber"
+                    value={filters.permitNumber}
+                    onChange={handleFilterChange}
+                    placeholder="Filter by permit number"
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={3}>
+                <Form.Group>
+                  <Form.Label>PO Number</Form.Label>
+                  <Form.Control
+                    type="text"
+                    name="poNumber"
+                    value={filters.poNumber}
+                    onChange={handleFilterChange}
+                    placeholder="Filter by PO number"
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={3}>
+                <Form.Group>
+                  <Form.Label>Employee</Form.Label>
+                  <Form.Control
+                    type="text"
+                    name="employeeName"
+                    value={filters.employeeName}
+                    onChange={handleFilterChange}
+                    placeholder="Filter by employee"
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={3}>
+                <Form.Group>
+                  <Form.Label>Type</Form.Label>
+                  <Form.Select
+                    name="permitType"
+                    value={filters.permitType}
+                    onChange={handleFilterChange}
+                  >
+                    <option value="">All Types</option>
+                    {typeOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+            </Row>
+            <Row className="mt-3">
+              <Col md={3}>
+                <Form.Group>
+                  <Form.Label>Status</Form.Label>
+                  <Form.Select
+                    name="permitStatus"
+                    value={filters.permitStatus}
+                    onChange={handleFilterChange}
+                  >
+                    <option value="">All Statuses</option>
+                    {statusOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+              <Col md={3}>
+                <Form.Group>
+                  <Form.Label>From Date</Form.Label>
+                  <DatePicker
+                    selected={filters.fromDate}
+                    onChange={(date) => handleDateChange(date, 'fromDate')}
+                    className="form-control"
+                    placeholderText="Select start date"
+                    dateFormat="dd/MM/yyyy"
+                    isClearable
+                  />
+                </Form.Group>
+              </Col>
+              <Col md={3}>
+                <Form.Group>
+                  <Form.Label>To Date</Form.Label>
+                  <DatePicker
+                    selected={filters.toDate}
+                    onChange={(date) => handleDateChange(date, 'toDate')}
+                    className="form-control"
+                    placeholderText="Select end date"
+                    dateFormat="dd/MM/yyyy"
+                    isClearable
+                    minDate={filters.fromDate}
+                  />
+                </Form.Group>
+              </Col>
+            </Row>
+          </Card>
+        )}
+
+        {filteredPermits.length === 0 ? (
+          <Alert variant="info" className="text-center">
+            No permits found matching your criteria
+          </Alert>
+        ) : (
+          <>
+            <div className="table-responsive">
+              <Table striped bordered hover className="align-middle">
+                <thead className="table-light">
+                  <tr>
+                    <th onClick={() => handleSort('permitNumber')} style={{ cursor: 'pointer' }}>
+                      Permit Number {sortConfig.key === 'permitNumber' && (
+                        sortConfig.direction === 'asc' ? '↑' : '↓'
+                      )}
+                    </th>
+                    <th onClick={() => handleSort('permitType')} style={{ cursor: 'pointer' }}>
+                      Type {sortConfig.key === 'permitType' && (
+                        sortConfig.direction === 'asc' ? '↑' : '↓'
+                      )}
+                    </th>
+                    <th onClick={() => handleSort('permitStatus')} style={{ cursor: 'pointer' }}>
+                      Status {sortConfig.key === 'permitStatus' && (
+                        sortConfig.direction === 'asc' ? '↑' : '↓'
+                      )}
+                    </th>
+                    <th>Current Level</th>
+                    <th onClick={() => handleSort('issueDate')} style={{ cursor: 'pointer' }}>
+                      Issued {sortConfig.key === 'issueDate' && (
+                        sortConfig.direction === 'asc' ? '↑' : '↓'
+                      )}
+                    </th>
+                    <th onClick={() => handleSort('expiryDate')} style={{ cursor: 'pointer' }}>
+                      Expires {sortConfig.key === 'expiryDate' && (
+                        sortConfig.direction === 'asc' ? '↑' : '↓'
+                      )}
+                    </th>
+                    <th onClick={() => handleSort('employeeName')} style={{ cursor: 'pointer' }}>
+                      Employee {sortConfig.key === 'employeeName' && (
+                        sortConfig.direction === 'asc' ? '↑' : '↓'
+                      )}
+                    </th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentPermits.map((permit) => (
+                    <tr key={permit._id}>
+                      <td>
+                        <div className="fw-semibold">{permit.permitNumber}</div>
+                        <div className="text-muted small">{permit.poNumber}</div>
+                      </td>
+                      <td>{permit.permitType}</td>
+                      <td>{getStatusBadge(permit.permitStatus)}</td>
+                      <td className="text-center">Level {permit.currentLevel}</td>
+                      <td>{new Date(permit.issueDate).toLocaleDateString()}</td>
+                      <td>{new Date(permit.expiryDate).toLocaleDateString()}</td>
+                      <td>{permit.employeeName}</td>
+                      <td>
+                        <div className="d-flex gap-2 justify-content-center">
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            onClick={() => handleEditClick(permit)}
+                            disabled={actionLoading !== null}
+                            title="Edit permit"
+                          >
+                            <FiEdit2 />
+                          </Button>
+                          
+                          {canTakeAction(permit) && (
+                            <>
+                              <Button
+                                variant="outline-success"
+                                size="sm"
+                                onClick={() => handleApprove(permit._id)}
+                                disabled={actionLoading === `approve-${permit._id}`}
+                                title="Approve permit"
+                              >
+                                {actionLoading === `approve-${permit._id}` ? (
+                                  <Spinner size="sm" />
+                                ) : (
+                                  <FiCheck />
+                                )}
+                              </Button>
+                              <Button
+                                variant="outline-warning"
+                                size="sm"
+                                onClick={() => handleReturn(permit._id)}
+                                disabled={actionLoading === `return-${permit._id}`}
+                                title="Return for corrections"
+                              >
+                                {actionLoading === `return-${permit._id}` ? (
+                                  <Spinner size="sm" />
+                                ) : (
+                                  <FiCornerUpLeft />
+                                )}
+                              </Button>
+                            </>
+                          )}
+                          
+                          <Button
+                            variant="outline-danger"
+                            size="sm"
+                            onClick={() => handleDelete(permit._id)}
+                            disabled={actionLoading === `delete-${permit._id}`}
+                            title="Delete permit"
+                          >
+                            {actionLoading === `delete-${permit._id}` ? (
+                              <Spinner size="sm" />
+                            ) : (
+                              <FiTrash2 />
+                            )}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="d-flex justify-content-center mt-4">
+                <Pagination>
+                  <Pagination.First 
+                    onClick={() => setCurrentPage(1)} 
+                    disabled={currentPage === 1} 
+                  />
+                  <Pagination.Prev 
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                    disabled={currentPage === 1} 
+                  />
+                  
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <Pagination.Item
+                        key={pageNum}
+                        active={pageNum === currentPage}
+                        onClick={() => setCurrentPage(pageNum)}
+                      >
+                        {pageNum}
+                      </Pagination.Item>
+                    );
+                  })}
+                  
+                  <Pagination.Next 
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                    disabled={currentPage === totalPages} 
+                  />
+                  <Pagination.Last 
+                    onClick={() => setCurrentPage(totalPages)} 
+                    disabled={currentPage === totalPages} 
+                  />
+                </Pagination>
+              </div>
+            )}
+
+            <div className="text-muted text-center mt-2">
+              Showing {indexOfFirstPermit + 1} to {Math.min(indexOfLastPermit, filteredPermits.length)} of {filteredPermits.length} permits
+            </div>
+          </>
+        )}
+      </Card>
+
+      <Modal show={showEditModal} onHide={handleModalClose} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Edit Permit</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <PermitForm
+            defaultValues={selectedPermit}
+            onClose={handleModalClose}
+            onSubmit={handlePermitUpdated}
+            isEdit={true}
+            isSubmitting={actionLoading === 'updating'}
+          />
+        </Modal.Body>
+      </Modal>
+    </>
+  );
+};
+
+export default PermitsTable;
