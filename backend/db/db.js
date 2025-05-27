@@ -4,7 +4,8 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 // Use the local MongoDB connection string
-const mongoURL = process.env.MONGO_URL_LOCAL;
+//const mongoURL = process.env.MONGO_URL_LOCAL;
+const mongoURL = process.env.MONGO_URL_ATLAS;
 
 if (!mongoURL) {
   console.error("MongoDB LOCAL URL connection is missing.");
@@ -15,7 +16,7 @@ mongoose.connect(mongoURL, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
-.then(() => console.log("✅ Connected to local MongoDB"))
+.then(() => console.log("✅ Connected to Atlas MongoDB"))
 .catch((err) => {
   console.error("❌ MongoDB connection error:", err);
   process.exit(1);

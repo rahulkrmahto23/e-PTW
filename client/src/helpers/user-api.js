@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const apiClient = axios.create({
-  baseURL: "http://localhost:5000/api/v1/user",
+  baseURL:  "https://e-ptw-nine.vercel.app/api/v1/user",
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
@@ -16,8 +16,8 @@ export const loginUser = async (email, password) => {
         name: res.data.name,
         email: res.data.email,
         role: res.data.role,
-        level: res.data.level
-      }
+        level: res.data.level,
+      },
     };
   } catch (error) {
     console.error("API Error:", error.response?.data || error);
@@ -25,9 +25,21 @@ export const loginUser = async (email, password) => {
   }
 };
 
-export const signupUser = async (name, email, password, role = "CLIENT", level = 4) => {
+export const signupUser = async (
+  name,
+  email,
+  password,
+  role = "CLIENT",
+  level = 4
+) => {
   try {
-    const res = await apiClient.post("/signup", { name, email, password, role, level });
+    const res = await apiClient.post("/signup", {
+      name,
+      email,
+      password,
+      role,
+      level,
+    });
     return {
       success: true,
       message: res.data.message,
@@ -35,8 +47,8 @@ export const signupUser = async (name, email, password, role = "CLIENT", level =
         name: res.data.name,
         email: res.data.email,
         role: res.data.role,
-        level: res.data.level
-      }
+        level: res.data.level,
+      },
     };
   } catch (error) {
     throw new Error(error.response?.data?.message || "Unable to signup");
@@ -62,8 +74,8 @@ export const verifyUser = async () => {
         name: res.data.name,
         email: res.data.email,
         role: res.data.role,
-        level: res.data.level
-      }
+        level: res.data.level,
+      },
     };
   } catch (error) {
     throw new Error(error.response?.data?.message || "Unable to verify user");

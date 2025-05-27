@@ -10,9 +10,20 @@ const app = express();
 dotenv.config();
 const PORT = process.env.PORT || 7000;
 
+const allowedOrigins = [
+  "https://e-jvd5fee8u-rahul-kumar-mahtos-projects.vercel.app",
+  "https://e-ptw-nine.vercel.app",
+  "http://localhost:5000", // for local dev
+];
 // CORS configuration
 const corsOptions = {
-  origin: "http://localhost:5173", // Your frontend origin
+ origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true, // Required for cookies/session
   allowedHeaders: ["Content-Type", "Authorization"],
