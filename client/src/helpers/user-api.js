@@ -1,10 +1,11 @@
 import axios from "axios";
 
 const apiClient = axios.create({
-  baseURL: "http://e-ptw-17wr.vercel.app/api/v1/user" , // <-- Fixed this line
+  baseURL: "https://e-ptw-17wr.vercel.app/api/v1/user", // ✅ use HTTPS
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
+
 
 export const loginUser = async (email, password) => {
   try {

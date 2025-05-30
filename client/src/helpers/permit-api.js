@@ -1,10 +1,11 @@
 import axios from "axios";
 
 const apiClient = axios.create({
-  baseURL: "http://e-ptw-17wr.vercel.app/api/v1/permits",
+  baseURL: "https://e-ptw-17wr.vercel.app/api/v1/permits", // ✅ use HTTPS
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
+
 
 
 // Helper function to handle errors consistently
