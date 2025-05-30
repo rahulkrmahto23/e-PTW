@@ -453,3 +453,95 @@ exports.deletePermit = async (req, res) => {
     });
   }
 };
+
+exports.getPermitById = async (req, res) => {
+  try {
+    const userId = res.locals.jwtData.id;
+    const { id } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const permit = await Permit.findById(id)
+      .populate("createdBy", "name email level")
+      .populate("approvalHistory.approvedBy", "name email level")
+      .populate("returnedInfo.returnedBy", "name email level");
+
+    if (!permit) {
+      return res.status(404).json({
+        success: false,
+        message: "Permit not found",
+      });
+    }
+
+    // Check if user has permission to view this permit
+    if (
+      user.role !== "ADMIN" &&
+      permit.createdBy._id.toString() !== userId &&
+      !permit.approvalHistory.some(
+        (approval) => approval.approvedBy._id.toString() === userId
+      ) &&
+      permit.currentLevel !== user.level
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view this permit",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Permit fetched successfully",
+      permit,
+    });
+  } catch (error) {
+    console.error("Error fetching permit:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching permit",
+      error: error.message,
+    });
+  }
+};
+
+// Get pending permits for the logged-in user's level
+exports.getPendingPermits = async (req, res) => {
+  try {
+    const userId = res.locals.jwtData.id;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const pendingPermits = await Permit.find({
+      currentLevel: user.level,
+      permitStatus: "Pending",
+    })
+      .populate("createdBy", "name email level")
+      .populate("approvalHistory.approvedBy", "name email level")
+      .populate("returnedInfo.returnedBy", "name email level");
+
+    return res.status(200).json({
+      success: true,
+      message: "Pending permits fetched successfully",
+      count: pendingPermits.length,
+      permits: pendingPermits,
+    });
+  } catch (error) {
+    console.error("Error fetching pending permits:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching pending permits",
+      error: error.message,
+    });
+  }
+};

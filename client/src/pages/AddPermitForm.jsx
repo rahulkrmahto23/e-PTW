@@ -127,18 +127,46 @@ const AddPermitForm = ({
       if (isEdit) {
         // Update existing permit
         response = await editPermitDetails(defaultValues._id, formData);
-        toast.success(response.message || "Permit updated successfully!");
+        toast.success("Permit updated successfully!", {
+          duration: 4000,
+          position: 'top-center',
+        });
       } else {
         // Create new permit
         response = await createPermit(formData);
-        toast.success(response.message || "Permit created successfully!");
+        toast.success("Permit created successfully!", {
+          duration: 4000,
+          position: 'top-center',
+        });
       }
       
-      if (onPermitUpdated) onPermitUpdated(response.permit);
+      if (onPermitUpdated) {
+        await onPermitUpdated(response.permit);
+      }
+      
+      // Reset form if not in edit mode
+      if (!isEdit) {
+        setFormData({
+          permitNumber: "",
+          poNumber: "",
+          employeeName: "",
+          permitType: "",
+          permitStatus: "Pending",
+          location: "",
+          remarks: "",
+          issueDate: new Date(),
+          expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        });
+      }
+      
+      // Close the form if needed
       onClose();
     } catch (error) {
       console.error("Error submitting permit:", error);
-      toast.error(error.response?.data?.message || error.message || "Failed to submit permit. Please try again.");
+      toast.error(error.response?.data?.message || error.message || "Failed to submit permit. Please try again.", {
+        duration: 5000,
+        position: 'top-center',
+      });
     } finally {
       setIsLoading(false);
     }

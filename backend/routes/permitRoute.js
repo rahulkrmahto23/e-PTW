@@ -1,4 +1,3 @@
-// routes/userRoute.js
 const express = require("express");
 const router = express.Router();
 const permitController = require("../controllers/permitController");
@@ -13,5 +12,8 @@ router.put("/edit/:id", verifyToken, permitController.editPermitDetails);
 router.get("/search", verifyToken, permitController.searchPermits);
 router.delete("/delete/:id", verifyToken, permitController.deletePermit);
 
+// New routes
+router.get("/:id", verifyToken, permitController.getPermitById);
+router.get("/pending/user", verifyToken, permitController.getPendingPermits);
 
 module.exports = router;

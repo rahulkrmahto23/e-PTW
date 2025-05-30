@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Container, 
   Row, 
@@ -11,52 +11,49 @@ import {
   Modal,
   Spinner,
   Alert,
-  InputGroup
+  Dropdown
 } from 'react-bootstrap';
 import DatePicker from 'react-datepicker';
-import { FaSearch, FaFilter, FaTimes, FaHistory } from 'react-icons/fa';
-import { FiEdit2, FiTrash2, FiRefreshCw } from 'react-icons/fi';
+import { FaSearch, FaEdit, FaTrash } from 'react-icons/fa';
+import { FiEdit2, FiTrash2, FiCheck, FiCornerUpLeft } from 'react-icons/fi';
 import 'react-datepicker/dist/react-datepicker.css';
-import { searchPermits, deletePermit } from '../helpers/permit-api';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import { searchPermits, deletePermit, approvePermit, returnPermit } from '../helpers/permit-api';
 import PermitForm from './AddPermitForm';
 import toast, { Toaster } from 'react-hot-toast';
-import { getPermitStatusOptions } from '../helpers/permit-api';
 
 const getStatusBadge = (status) => {
   const badgeClass = {
     'APPROVED': 'success',
     'PENDING': 'warning',
     'REJECTED': 'danger',
-    'RETURNED': 'info',
-    'CLOSED': 'secondary'
-  }[status] || 'primary';
+    'ASSIGNED': 'primary',
+    'UNASSIGNED': 'secondary',
+    'CLOSED': 'dark'
+  }[status] || 'secondary';
 
-  return <Badge bg={badgeClass} className="text-capitalize">{status.toLowerCase()}</Badge>;
+  return <Badge bg={badgeClass}>{status}</Badge>;
 };
 
 const Search = () => {
   const [searchParams, setSearchParams] = useState({
-    permitNumber: '',
     poNumber: '',
-    employeeName: '',
-    permitType: '',
-    permitStatus: '',
-    issueDateFrom: null,
-    issueDateTo: null,
-    expiryDateFrom: null,
-    expiryDateTo: null
+    permitNumber: '',
+    permitStatus: 'ALL',
+    startDate: null,
+    endDate: null
   });
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedPermit, setSelectedPermit] = useState(null);
-  const [deleting, setDeleting] = useState(null);
-  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [actionLoading, setActionLoading] = useState(null);
   const [userLevel, setUserLevel] = useState(null);
+  const [actionDropdownOpen, setActionDropdownOpen] = useState(null);
 
-  useEffect(() => {
-    // Get user level from storage
+  // Get user level from storage
+  React.useEffect(() => {
     const userData = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user'));
     if (userData) setUserLevel(userData.level);
   }, []);
@@ -69,10 +66,12 @@ const Search = () => {
     }));
   };
 
-  const handleDateChange = (date, field) => {
+  const handleDateChange = (dates) => {
+    const [start, end] = dates;
     setSearchParams(prev => ({
       ...prev,
-      [field]: date
+      startDate: start,
+      endDate: end
     }));
   };
 
@@ -81,19 +80,16 @@ const Search = () => {
       setLoading(true);
       setError('');
 
-      // Prepare query object
       const query = {};
-      if (searchParams.permitNumber) query.permitNumber = { $regex: searchParams.permitNumber, $options: 'i' };
-      if (searchParams.poNumber) query.poNumber = { $regex: searchParams.poNumber, $options: 'i' };
-      if (searchParams.employeeName) query.employeeName = { $regex: searchParams.employeeName, $options: 'i' };
-      if (searchParams.permitType) query.permitType = searchParams.permitType;
-      if (searchParams.permitStatus) query.permitStatus = searchParams.permitStatus;
-      
-      // Date range queries
-      if (searchParams.issueDateFrom) query.issueDate = { ...query.issueDate, $gte: searchParams.issueDateFrom };
-      if (searchParams.issueDateTo) query.issueDate = { ...query.issueDate, $lte: searchParams.issueDateTo };
-      if (searchParams.expiryDateFrom) query.expiryDate = { ...query.expiryDate, $gte: searchParams.expiryDateFrom };
-      if (searchParams.expiryDateTo) query.expiryDate = { ...query.expiryDate, $lte: searchParams.expiryDateTo };
+      if (searchParams.poNumber) query.poNumber = searchParams.poNumber;
+      if (searchParams.permitNumber) query.permitNumber = searchParams.permitNumber;
+      if (searchParams.permitStatus !== 'ALL') query.permitStatus = searchParams.permitStatus;
+      if (searchParams.startDate && searchParams.endDate) {
+        query.issueDate = {
+          $gte: searchParams.startDate,
+          $lte: searchParams.endDate
+        };
+      }
 
       const response = await searchPermits(query);
       setSearchResults(response.permits);
@@ -108,26 +104,14 @@ const Search = () => {
 
   const handleClear = () => {
     setSearchParams({
-      permitNumber: '',
       poNumber: '',
-      employeeName: '',
-      permitType: '',
-      permitStatus: '',
-      issueDateFrom: null,
-      issueDateTo: null,
-      expiryDateFrom: null,
-      expiryDateTo: null
+      permitNumber: '',
+      permitStatus: 'ALL',
+      startDate: null,
+      endDate: null
     });
     setSearchResults([]);
     setError('');
-  };
-
-  const handleQuickSearch = (status) => {
-    setSearchParams(prev => ({
-      ...prev,
-      permitStatus: status
-    }));
-    setTimeout(handleSearch, 100);
   };
 
   const handleEditClick = (permit) => {
@@ -152,191 +136,234 @@ const Search = () => {
   };
 
   const handleDeleteClick = async (id) => {
-    const confirm = window.confirm("Are you sure you want to delete this permit?");
+    const confirm = window.confirm(
+      "Are you sure you want to delete this permit?"
+    );
     if (!confirm) return;
 
     try {
-      setDeleting(id);
+      setActionLoading(`delete-${id}`);
       await deletePermit(id);
       await handleSearch(); // Refresh the search results
       toast.success("Permit deleted successfully!");
     } catch (err) {
       toast.error(err.message || "Failed to delete permit");
     } finally {
-      setDeleting(null);
+      setActionLoading(null);
     }
   };
 
-  const statusOptions = getPermitStatusOptions();
+  const handleApprove = async (permitId, currentLevel, totalLevels) => {
+    try {
+      setActionLoading(`approve-${permitId}`);
+      
+      const isFinalApproval = currentLevel >= totalLevels;
+      
+      await approvePermit(permitId, currentLevel, isFinalApproval);
+      await handleSearch();
+      
+      if (isFinalApproval) {
+        toast.success("Permit fully approved and closed!");
+      } else {
+        toast.success(`Permit approved at level ${currentLevel} and moved to level ${currentLevel + 1}`);
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to approve permit");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReturn = async (permitId, currentLevel) => {
+    const requiredChanges = prompt("Please specify required changes:");
+    if (!requiredChanges) return;
+
+    try {
+      setActionLoading(`return-${permitId}`);
+      await returnPermit(permitId, requiredChanges, currentLevel);
+      await handleSearch();
+      toast.success("Permit returned for corrections!");
+    } catch (err) {
+      toast.error(err.message || "Failed to return permit");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const canTakeAction = (permit) => {
+    if (!userLevel) return false;
+    
+    const isPending = permit.permitStatus === "PENDING";
+    const isAtCurrentLevel = permit.currentLevel === userLevel;
+    const hasApprovedPreviousLevels = permit.approvedLevels && permit.approvedLevels.includes(userLevel - 1);
+    const isNotFinalApproval = permit.currentLevel < permit.totalLevels;
+    
+    return isPending && (isAtCurrentLevel || (userLevel > 1 && hasApprovedPreviousLevels)) && isNotFinalApproval;
+  };
+
+  const renderActionButtons = (permit) => {
+    if (permit.permitStatus === "PENDING" && canTakeAction(permit)) {
+      return (
+        <Dropdown 
+          show={actionDropdownOpen === permit._id}
+          onToggle={(isOpen) => setActionDropdownOpen(isOpen ? permit._id : null)}
+        >
+          <Dropdown.Toggle variant="outline-primary" size="sm" id="dropdown-actions">
+            Take Action
+          </Dropdown.Toggle>
+          
+          <Dropdown.Menu>
+            <Dropdown.Item 
+              onClick={() => handleApprove(permit._id, permit.currentLevel, permit.totalLevels)}
+              disabled={actionLoading === `approve-${permit._id}`}
+            >
+              {actionLoading === `approve-${permit._id}` ? (
+                <Spinner size="sm" className="me-2" />
+              ) : (
+                <FiCheck className="me-2 text-success" />
+              )}
+              Approve
+            </Dropdown.Item>
+            
+            <Dropdown.Item 
+              onClick={() => handleReturn(permit._id, permit.currentLevel)}
+              disabled={actionLoading === `return-${permit._id}`}
+            >
+              {actionLoading === `return-${permit._id}` ? (
+                <Spinner size="sm" className="me-2" />
+              ) : (
+                <FiCornerUpLeft className="me-2 text-warning" />
+              )}
+              Return for Correction
+            </Dropdown.Item>
+            
+            <Dropdown.Divider />
+            
+            <Dropdown.Item 
+              onClick={() => handleEditClick(permit)}
+              disabled={actionLoading !== null}
+            >
+              <FiEdit2 className="me-2" />
+              Edit Details
+            </Dropdown.Item>
+          </Dropdown.Menu>
+        </Dropdown>
+      );
+    } else {
+      return (
+        <div className="d-flex gap-2 justify-content-center">
+          <Button
+            variant="outline-primary"
+            size="sm"
+            onClick={() => handleEditClick(permit)}
+            disabled={actionLoading !== null}
+            title="Edit permit"
+          >
+            <FiEdit2 />
+          </Button>
+          
+          <Button
+            variant="outline-danger"
+            size="sm"
+            onClick={() => handleDeleteClick(permit._id)}
+            disabled={actionLoading === `delete-${permit._id}`}
+            title="Delete permit"
+          >
+            {actionLoading === `delete-${permit._id}` ? (
+              <Spinner size="sm" />
+            ) : (
+              <FiTrash2 />
+            )}
+          </Button>
+        </div>
+      );
+    }
+  };
 
   return (
-    <Container className="py-4">
+    <Container className="py-5">
       <Toaster position="top-center" reverseOrder={false} />
-      <Card className="shadow-sm border-0 rounded-3">
-        <Card.Header className="bg-primary text-white">
-          <div className="d-flex justify-content-between align-items-center">
-            <h4 className="mb-0">🔍 Permit Search</h4>
-            <Button 
-              variant="light" 
-              size="sm"
-              onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-            >
-              {showAdvancedSearch ? <FaTimes /> : <FaFilter />}
-              <span className="ms-2">{showAdvancedSearch ? 'Hide Filters' : 'Advanced Filters'}</span>
-            </Button>
-          </div>
-        </Card.Header>
+      <Card className="shadow-lg p-4 border-0 rounded-4">
+        <h4 className="mb-4 text-primary fw-bold">🔍 Search Work Permit</h4>
 
-        <Card.Body>
-          <Row className="mb-3 g-3">
-            <Col md={4}>
-              <Form.Group>
-                <Form.Label>Permit Number</Form.Label>
-                <Form.Control
-                  type="text"
-                  name="permitNumber"
-                  placeholder="Search by permit number"
-                  value={searchParams.permitNumber}
-                  onChange={handleInputChange}
-                />
-              </Form.Group>
-            </Col>
+        <Row className="mb-4 g-3">
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label className="fw-semibold">PO Number</Form.Label>
+              <Form.Control
+                type="text"
+                name="poNumber"
+                placeholder="Enter PO Number"
+                value={searchParams.poNumber}
+                onChange={handleInputChange}
+                className="rounded-3"
+              />
+            </Form.Group>
+          </Col>
 
-            <Col md={4}>
-              <Form.Group>
-                <Form.Label>PO Number</Form.Label>
-                <Form.Control
-                  type="text"
-                  name="poNumber"
-                  placeholder="Search by PO number"
-                  value={searchParams.poNumber}
-                  onChange={handleInputChange}
-                />
-              </Form.Group>
-            </Col>
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label className="fw-semibold">Permit Number</Form.Label>
+              <Form.Control
+                type="text"
+                name="permitNumber"
+                placeholder="Enter Permit Number"
+                value={searchParams.permitNumber}
+                onChange={handleInputChange}
+                className="rounded-3"
+              />
+            </Form.Group>
+          </Col>
 
-            <Col md={4}>
-              <Form.Group>
-                <Form.Label>Status</Form.Label>
-                <Form.Select
-                  name="permitStatus"
-                  value={searchParams.permitStatus}
-                  onChange={handleInputChange}
-                >
-                  <option value="">All Statuses</option>
-                  {statusOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Form.Select>
-              </Form.Group>
-            </Col>
-          </Row>
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label className="fw-semibold">Permit Status</Form.Label>
+              <Form.Select
+                name="permitStatus"
+                value={searchParams.permitStatus}
+                onChange={handleInputChange}
+                className="rounded-3"
+              >
+                <option value="ALL">All</option>
+                <option value="PENDING">Pending</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
+                <option value="CLOSED">Closed</option>
+              </Form.Select>
+            </Form.Group>
+          </Col>
 
-          {showAdvancedSearch && (
-            <>
-              <Row className="mb-3 g-3">
-                <Col md={4}>
-                  <Form.Group>
-                    <Form.Label>Employee Name</Form.Label>
-                    <Form.Control
-                      type="text"
-                      name="employeeName"
-                      placeholder="Search by employee name"
-                      value={searchParams.employeeName}
-                      onChange={handleInputChange}
-                    />
-                  </Form.Group>
-                </Col>
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label className="fw-semibold">Permit Issue Date Range</Form.Label>
+              <DatePicker
+                selectsRange
+                startDate={searchParams.startDate}
+                endDate={searchParams.endDate}
+                onChange={handleDateChange}
+                isClearable
+                className="form-control rounded-3"
+                dateFormat="dd-MM-yyyy"
+                placeholderText="Select date range"
+              />
+            </Form.Group>
+          </Col>
+        </Row>
 
-                <Col md={4}>
-                  <Form.Group>
-                    <Form.Label>Permit Type</Form.Label>
-                    <Form.Select
-                      name="permitType"
-                      value={searchParams.permitType}
-                      onChange={handleInputChange}
-                    >
-                      <option value="">All Types</option>
-                      <option value="Hot Work">Hot Work</option>
-                      <option value="Cold Work">Cold Work</option>
-                      <option value="Electrical">Electrical</option>
-                      <option value="Height Work">Height Work</option>
-                      <option value="Confined Space">Confined Space</option>
-                    </Form.Select>
-                  </Form.Group>
-                </Col>
-              </Row>
-
-              <Row className="mb-3 g-3">
-                <Col md={6}>
-                  <Form.Group>
-                    <Form.Label>Issue Date Range</Form.Label>
-                    <div className="d-flex gap-2">
-                      <DatePicker
-                        selected={searchParams.issueDateFrom}
-                        onChange={(date) => handleDateChange(date, 'issueDateFrom')}
-                        selectsStart
-                        startDate={searchParams.issueDateFrom}
-                        endDate={searchParams.issueDateTo}
-                        placeholderText="From"
-                        className="form-control"
-                      />
-                      <DatePicker
-                        selected={searchParams.issueDateTo}
-                        onChange={(date) => handleDateChange(date, 'issueDateTo')}
-                        selectsEnd
-                        startDate={searchParams.issueDateFrom}
-                        endDate={searchParams.issueDateTo}
-                        minDate={searchParams.issueDateFrom}
-                        placeholderText="To"
-                        className="form-control"
-                      />
-                    </div>
-                  </Form.Group>
-                </Col>
-
-                <Col md={6}>
-                  <Form.Group>
-                    <Form.Label>Expiry Date Range</Form.Label>
-                    <div className="d-flex gap-2">
-                      <DatePicker
-                        selected={searchParams.expiryDateFrom}
-                        onChange={(date) => handleDateChange(date, 'expiryDateFrom')}
-                        selectsStart
-                        startDate={searchParams.expiryDateFrom}
-                        endDate={searchParams.expiryDateTo}
-                        placeholderText="From"
-                        className="form-control"
-                      />
-                      <DatePicker
-                        selected={searchParams.expiryDateTo}
-                        onChange={(date) => handleDateChange(date, 'expiryDateTo')}
-                        selectsEnd
-                        startDate={searchParams.expiryDateFrom}
-                        endDate={searchParams.expiryDateTo}
-                        minDate={searchParams.expiryDateFrom}
-                        placeholderText="To"
-                        className="form-control"
-                      />
-                    </div>
-                  </Form.Group>
-                </Col>
-              </Row>
-            </>
-          )}
-
-          <div className="d-flex justify-content-end gap-2 mb-4">
+        <Row className="mb-4 g-3">
+          <Col md={3}>
             <Button 
               variant="outline-secondary" 
+              className="w-100 rounded-3"
               onClick={handleClear}
-              disabled={loading}
             >
-              <FaTimes className="me-2" /> Clear
+              Clear Filter
             </Button>
+          </Col>
+          <Col md={6}>
             <Button 
               variant="primary" 
+              className="w-100 rounded-3"
               onClick={handleSearch}
               disabled={loading}
             >
@@ -350,56 +377,29 @@ const Search = () => {
                 </>
               )}
             </Button>
-          </div>
+          </Col>
+        </Row>
 
-          <div className="d-flex flex-wrap gap-2 mb-4">
-            <Button 
-              variant="outline-info" 
-              size="sm"
-              onClick={() => handleQuickSearch('PENDING')}
-            >
-              Pending Permits
-            </Button>
-            <Button 
-              variant="outline-success" 
-              size="sm"
-              onClick={() => handleQuickSearch('APPROVED')}
-            >
-              Approved Permits
-            </Button>
-            <Button 
-              variant="outline-danger" 
-              size="sm"
-              onClick={() => handleQuickSearch('REJECTED')}
-            >
-              Rejected Permits
-            </Button>
-            <Button 
-              variant="outline-warning" 
-              size="sm"
-              onClick={() => handleQuickSearch('')}
-            >
-              All Permits
-            </Button>
-          </div>
+        {error && (
+          <Alert variant="danger" className="mt-3">
+            {error}
+          </Alert>
+        )}
 
-          {error && (
-            <Alert variant="danger" className="mt-3">
-              {error}
-            </Alert>
-          )}
-
-          {searchResults.length > 0 ? (
+        {searchResults.length > 0 && (
+          <div className="mt-4">
+            <h5 className="mb-3">Search Results</h5>
             <div className="table-responsive">
-              <Table striped bordered hover className="mt-3">
-                <thead className="table-dark">
+              <Table striped bordered hover>
+                <thead>
                   <tr>
                     <th>Status</th>
                     <th>Permit No.</th>
                     <th>PO No.</th>
                     <th>Employee</th>
                     <th>Type</th>
-                    <th>Location</th>
+                    <th>Current Level</th>
+                    <th>Approval Progress</th>
                     <th>Issue Date</th>
                     <th>Expiry Date</th>
                     <th>Actions</th>
@@ -409,56 +409,43 @@ const Search = () => {
                   {searchResults.map((permit) => (
                     <tr key={permit._id}>
                       <td>{getStatusBadge(permit.permitStatus)}</td>
-                      <td className="fw-semibold">{permit.permitNumber}</td>
+                      <td>
+                        <div className="fw-semibold">{permit.permitNumber}</div>
+                      </td>
                       <td>{permit.poNumber}</td>
                       <td>{permit.employeeName}</td>
                       <td>{permit.permitType}</td>
-                      <td>{permit.location}</td>
+                      <td className="text-center">Level {permit.currentLevel}</td>
+                      <td>
+                        <div className="d-flex align-items-center">
+                          {Array.from({ length: permit.totalLevels || 1 }, (_, i) => (
+                            <div 
+                              key={i} 
+                              className={`me-1 ${(permit.approvedLevels || []).includes(i + 1) ? 'text-success' : 'text-muted'}`}
+                            >
+                              {i + 1}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
                       <td>{new Date(permit.issueDate).toLocaleDateString()}</td>
                       <td>{new Date(permit.expiryDate).toLocaleDateString()}</td>
                       <td>
-                        <div className="d-flex gap-2">
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            onClick={() => handleEditClick(permit)}
-                            disabled={permit.permitStatus === 'APPROVED' && userLevel > 1}
-                            title={permit.permitStatus === 'APPROVED' && userLevel > 1 ? 
-                              "Approved permits can only be edited by administrators" : "Edit permit"}
-                          >
-                            <FiEdit2 />
-                          </Button>
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            onClick={() => handleDeleteClick(permit._id)}
-                            disabled={deleting === permit._id || (permit.permitStatus === 'APPROVED' && userLevel > 1)}
-                            title={permit.permitStatus === 'APPROVED' && userLevel > 1 ? 
-                              "Approved permits can only be deleted by administrators" : "Delete permit"}
-                          >
-                            {deleting === permit._id ? (
-                              <Spinner animation="border" size="sm" />
-                            ) : (
-                              <FiTrash2 />
-                            )}
-                          </Button>
-                        </div>
+                        {renderActionButtons(permit)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </Table>
             </div>
-          ) : (
-            !loading && (
-              <div className="text-center py-5 text-muted">
-                <FaHistory size={48} className="mb-3" />
-                <h5>No permits found</h5>
-                <p>Try adjusting your search criteria</p>
-              </div>
-            )
-          )}
-        </Card.Body>
+          </div>
+        )}
+
+        {searchResults.length === 0 && !loading && !error && (
+          <div className="text-center py-4 text-muted">
+            No permits found. Try adjusting your search criteria.
+          </div>
+        )}
       </Card>
 
       <Modal show={showEditModal} onHide={handleModalClose} size="lg" centered>

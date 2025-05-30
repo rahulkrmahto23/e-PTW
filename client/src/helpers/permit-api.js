@@ -1,10 +1,11 @@
 import axios from "axios";
 
 const apiClient = axios.create({
-  baseURL: "https://e-ptw-nine.vercel.app/api/v1/permits",
+  baseURL: "http://e-ptw-nine.vercel.app/api/v1/permits",
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
+
 
 // Helper function to handle errors consistently
 const handleError = (error) => {
@@ -105,6 +106,34 @@ export const deletePermit = async (permitId) => {
   }
 };
 
+// Get a specific permit by ID
+export const getPermitById = async (permitId) => {
+  try {
+    const res = await apiClient.get(`/${permitId}`);
+    return {
+      success: true,
+      message: res.data.message,
+      permit: res.data.permit,
+    };
+  } catch (error) {
+    return handleError(error);
+  }
+};
+
+// Get pending permits for the current user's level
+export const getPendingPermits = async () => {
+  try {
+    const res = await apiClient.get("/pending/user");
+    return {
+      success: true,
+      message: res.data.message,
+      count: res.data.count,
+      permits: res.data.permits,
+    };
+  } catch (error) {
+    return handleError(error);
+  }
+};
 
 // Additional utility functions
 export const getPermitStatusOptions = () => {

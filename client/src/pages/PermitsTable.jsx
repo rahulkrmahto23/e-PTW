@@ -9,7 +9,12 @@ import {
   Spinner,
   Alert,
   InputGroup,
-  Pagination
+  Pagination,
+  Row,
+  Col,
+  Dropdown,
+  Tab,
+  Tabs
 } from "react-bootstrap";
 import { 
   FiEdit2, 
@@ -19,10 +24,13 @@ import {
   FiCornerUpLeft,
   FiFilter,
   FiSearch,
-  FiRefreshCw
+  FiRefreshCw,
+  FiEye,
+  FiInfo
 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import PermitForm from "./AddPermitForm";
+import PermitDetails from "../component/PermitDetails";
 import { 
   getAllPermits, 
   approvePermit, 
@@ -30,7 +38,8 @@ import {
   editPermitDetails,
   deletePermit,
   getPermitStatusOptions,
-  getPermitTypeOptions
+  getPermitTypeOptions,
+  getPendingPermits
 } from "../helpers/permit-api";
 import toast, { Toaster } from "react-hot-toast";
 import DatePicker from "react-datepicker";
@@ -49,14 +58,18 @@ const getStatusBadge = (status) => {
 
 const PermitsTable = () => {
   const [permits, setPermits] = useState([]);
+  const [pendingPermits, setPendingPermits] = useState([]);
   const [filteredPermits, setFilteredPermits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pendingLoading, setPendingLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
   const [userLevel, setUserLevel] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedPermit, setSelectedPermit] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [activeTab, setActiveTab] = useState('all');
   const [filters, setFilters] = useState({
     permitNumber: '',
     poNumber: '',
@@ -74,15 +87,12 @@ const PermitsTable = () => {
   const statusOptions = getPermitStatusOptions();
   const typeOptions = getPermitTypeOptions();
 
-  const fetchPermits = async () => {
+  const fetchAllPermits = async () => {
     try {
       setLoading(true);
       const response = await getAllPermits();
       setPermits(response.permits);
       setFilteredPermits(response.permits);
-      
-      const userData = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user'));
-      if (userData) setUserLevel(userData.level);
     } catch (err) {
       setError(err.message || "Failed to fetch permits");
       toast.error(err.message || "Failed to fetch permits");
@@ -91,8 +101,25 @@ const PermitsTable = () => {
     }
   };
 
+  const fetchPendingPermits = async () => {
+    try {
+      setPendingLoading(true);
+      const response = await getPendingPermits();
+      setPendingPermits(response.permits);
+      
+      const userData = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user'));
+      if (userData) setUserLevel(userData.level);
+    } catch (err) {
+      setError(err.message || "Failed to fetch pending permits");
+      toast.error(err.message || "Failed to fetch pending permits");
+    } finally {
+      setPendingLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetchPermits();
+    fetchAllPermits();
+    fetchPendingPermits();
   }, []);
 
   useEffect(() => {
@@ -141,7 +168,7 @@ const PermitsTable = () => {
     }
     
     setFilteredPermits(results);
-    setCurrentPage(1); // Reset to first page when filters change
+    setCurrentPage(1);
   }, [permits, filters, sortConfig]);
 
   const handleSort = (key) => {
@@ -177,6 +204,11 @@ const PermitsTable = () => {
   const handleSearchClick = () => navigate("/search");
   const handleAddPermitClick = () => navigate("/add-permit");
 
+  const handleViewDetails = (permit) => {
+    setSelectedPermit(permit);
+    setShowDetailsModal(true);
+  };
+
   const handleEditClick = (permit) => {
     setSelectedPermit({
       ...permit,
@@ -188,6 +220,7 @@ const PermitsTable = () => {
 
   const handleModalClose = () => {
     setShowEditModal(false);
+    setShowDetailsModal(false);
     setSelectedPermit(null);
   };
 
@@ -195,7 +228,8 @@ const PermitsTable = () => {
     try {
       setActionLoading('updating');
       await editPermitDetails(selectedPermit._id, updatedData);
-      await fetchPermits();
+      await fetchAllPermits();
+      await fetchPendingPermits();
       toast.success("Permit updated successfully!");
       handleModalClose();
     } catch (err) {
@@ -205,12 +239,13 @@ const PermitsTable = () => {
     }
   };
 
-  const handleApprove = async (permitId) => {
+  const handleApprove = async (permitId, currentLevel) => {
     try {
       setActionLoading(`approve-${permitId}`);
       await approvePermit(permitId);
-      await fetchPermits();
-      toast.success("Permit approved successfully!");
+      await fetchAllPermits();
+      await fetchPendingPermits();
+      toast.success(`Permit approved at level ${currentLevel}`);
     } catch (err) {
       toast.error(err.message || "Failed to approve permit");
     } finally {
@@ -225,7 +260,8 @@ const PermitsTable = () => {
     try {
       setActionLoading(`return-${permitId}`);
       await returnPermit(permitId, requiredChanges);
-      await fetchPermits();
+      await fetchAllPermits();
+      await fetchPendingPermits();
       toast.success("Permit returned for corrections!");
     } catch (err) {
       toast.error(err.message || "Failed to return permit");
@@ -240,7 +276,8 @@ const PermitsTable = () => {
     try {
       setActionLoading(`delete-${permitId}`);
       await deletePermit(permitId);
-      await fetchPermits();
+      await fetchAllPermits();
+      await fetchPendingPermits();
       toast.success("Permit deleted successfully!");
     } catch (err) {
       toast.error(err.message || "Failed to delete permit");
@@ -249,9 +286,75 @@ const PermitsTable = () => {
     }
   };
 
-  const canTakeAction = (permit) => {
-    if (!userLevel) return false;
-    return permit.currentLevel === userLevel && permit.permitStatus === "Pending";
+  const renderActionButtons = (permit) => {
+    return (
+      <div className="d-flex gap-2 justify-content-center">
+        <Button
+          variant="outline-info"
+          size="sm"
+          onClick={() => handleViewDetails(permit)}
+          title="View details"
+        >
+          <FiEye />
+        </Button>
+        
+        {permit.permitStatus === "Pending" && permit.currentLevel === userLevel ? (
+          <>
+            <Button
+              variant="outline-success"
+              size="sm"
+              onClick={() => handleApprove(permit._id, permit.currentLevel)}
+              disabled={actionLoading === `approve-${permit._id}`}
+              title="Approve permit"
+            >
+              {actionLoading === `approve-${permit._id}` ? (
+                <Spinner size="sm" />
+              ) : (
+                <FiCheck />
+              )}
+            </Button>
+            
+            <Button
+              variant="outline-warning"
+              size="sm"
+              onClick={() => handleReturn(permit._id)}
+              disabled={actionLoading === `return-${permit._id}`}
+              title="Return permit"
+            >
+              {actionLoading === `return-${permit._id}` ? (
+                <Spinner size="sm" />
+              ) : (
+                <FiCornerUpLeft />
+              )}
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="outline-primary"
+            size="sm"
+            onClick={() => handleEditClick(permit)}
+            disabled={actionLoading !== null}
+            title="Edit permit"
+          >
+            <FiEdit2 />
+          </Button>
+        )}
+        
+        <Button
+          variant="outline-danger"
+          size="sm"
+          onClick={() => handleDelete(permit._id)}
+          disabled={actionLoading === `delete-${permit._id}`}
+          title="Delete permit"
+        >
+          {actionLoading === `delete-${permit._id}` ? (
+            <Spinner size="sm" />
+          ) : (
+            <FiTrash2 />
+          )}
+        </Button>
+      </div>
+    );
   };
 
   // Pagination logic
@@ -260,7 +363,7 @@ const PermitsTable = () => {
   const currentPermits = filteredPermits.slice(indexOfFirstPermit, indexOfLastPermit);
   const totalPages = Math.ceil(filteredPermits.length / perPage);
 
-  if (loading) {
+  if (loading || pendingLoading) {
     return (
       <div className="text-center my-5">
         <Spinner animation="border" role="status" />
@@ -303,224 +406,387 @@ const PermitsTable = () => {
           </div>
         </div>
 
-        {showFilters && (
-          <Card className="mb-4 p-3">
-            <Row>
-              <Col md={3}>
-                <Form.Group>
-                  <Form.Label>Permit Number</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="permitNumber"
-                    value={filters.permitNumber}
-                    onChange={handleFilterChange}
-                    placeholder="Filter by permit number"
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={3}>
-                <Form.Group>
-                  <Form.Label>PO Number</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="poNumber"
-                    value={filters.poNumber}
-                    onChange={handleFilterChange}
-                    placeholder="Filter by PO number"
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={3}>
-                <Form.Group>
-                  <Form.Label>Employee</Form.Label>
-                  <Form.Control
-                    type="text"
-                    name="employeeName"
-                    value={filters.employeeName}
-                    onChange={handleFilterChange}
-                    placeholder="Filter by employee"
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={3}>
-                <Form.Group>
-                  <Form.Label>Type</Form.Label>
-                  <Form.Select
-                    name="permitType"
-                    value={filters.permitType}
-                    onChange={handleFilterChange}
-                  >
-                    <option value="">All Types</option>
-                    {typeOptions.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-            </Row>
-            <Row className="mt-3">
-              <Col md={3}>
-                <Form.Group>
-                  <Form.Label>Status</Form.Label>
-                  <Form.Select
-                    name="permitStatus"
-                    value={filters.permitStatus}
-                    onChange={handleFilterChange}
-                  >
-                    <option value="">All Statuses</option>
-                    {statusOptions.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-              <Col md={3}>
-                <Form.Group>
-                  <Form.Label>From Date</Form.Label>
-                  <DatePicker
-                    selected={filters.fromDate}
-                    onChange={(date) => handleDateChange(date, 'fromDate')}
-                    className="form-control"
-                    placeholderText="Select start date"
-                    dateFormat="dd/MM/yyyy"
-                    isClearable
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={3}>
-                <Form.Group>
-                  <Form.Label>To Date</Form.Label>
-                  <DatePicker
-                    selected={filters.toDate}
-                    onChange={(date) => handleDateChange(date, 'toDate')}
-                    className="form-control"
-                    placeholderText="Select end date"
-                    dateFormat="dd/MM/yyyy"
-                    isClearable
-                    minDate={filters.fromDate}
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-          </Card>
-        )}
+        {pendingPermits.length > 0 && (
+  <Card className="mb-4">
+    <Card.Header className="bg-warning bg-opacity-10">
+      <h5 className="mb-0">
+        <FiInfo className="me-2 text-warning" />
+        Pending Approvals (Level {userLevel})
+      </h5>
+    </Card.Header>
+    <Card.Body>
+      <div className="table-responsive">
+        <Table striped bordered hover size="sm">
+          <thead>
+            <tr>
+              <th>Permit Number</th>
+              <th>Type</th>
+              <th>Issued</th>
+              <th>Employee</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pendingPermits.map((permit) => (
+              <tr key={permit._id}>
+                <td>{permit.permitNumber}</td>
+                <td>{permit.permitType}</td>
+                <td>{new Date(permit.issueDate).toLocaleDateString()}</td>
+                <td>{permit.employeeName}</td>
+                <td>
+                  <div className="d-flex flex-column flex-md-row gap-2 justify-content-center">
+                    <Button
+                      variant="success"
+                      size="sm"
+                      onClick={() => handleApprove(permit._id, permit.currentLevel)}
+                      disabled={actionLoading === `approve-${permit._id}`}
+                    >
+                      {actionLoading === `approve-${permit._id}` ? (
+                        <Spinner size="sm" />
+                      ) : (
+                        <>
+                          <FiCheck className="me-1" /> Approve
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="warning"
+                      size="sm"
+                      onClick={() => handleReturn(permit._id)}
+                      disabled={actionLoading === `return-${permit._id}`}
+                    >
+                      {actionLoading === `return-${permit._id}` ? (
+                        <Spinner size="sm" />
+                      ) : (
+                        <>
+                          <FiCornerUpLeft className="me-1" /> Return
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="info"
+                      size="sm"
+                      onClick={() => handleViewDetails(permit)}
+                    >
+                      <FiEye className="me-1" /> Details
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </div>
+    </Card.Body>
+  </Card>
+)}
 
-        {filteredPermits.length === 0 ? (
-          <Alert variant="info" className="text-center">
-            No permits found matching your criteria
-          </Alert>
-        ) : (
-          <>
-            <div className="table-responsive">
-              <Table striped bordered hover className="align-middle">
-                <thead className="table-light">
+
+        <Tabs
+          activeKey={activeTab}
+          onSelect={(k) => setActiveTab(k)}
+          className="mb-3"
+        >
+          <Tab eventKey="all" title="All Permits">
+            {showFilters && (
+              <Card className="mb-4 p-3">
+                <Row>
+                  <Col md={3}>
+                    <Form.Group>
+                      <Form.Label>Permit Number</Form.Label>
+                      <Form.Control
+                        type="text"
+                        name="permitNumber"
+                        value={filters.permitNumber}
+                        onChange={handleFilterChange}
+                        placeholder="Filter by permit number"
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col md={3}>
+                    <Form.Group>
+                      <Form.Label>PO Number</Form.Label>
+                      <Form.Control
+                        type="text"
+                        name="poNumber"
+                        value={filters.poNumber}
+                        onChange={handleFilterChange}
+                        placeholder="Filter by PO number"
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col md={3}>
+                    <Form.Group>
+                      <Form.Label>Employee</Form.Label>
+                      <Form.Control
+                        type="text"
+                        name="employeeName"
+                        value={filters.employeeName}
+                        onChange={handleFilterChange}
+                        placeholder="Filter by employee"
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col md={3}>
+                    <Form.Group>
+                      <Form.Label>Type</Form.Label>
+                      <Form.Select
+                        name="permitType"
+                        value={filters.permitType}
+                        onChange={handleFilterChange}
+                      >
+                        <option value="">All Types</option>
+                        {typeOptions.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </Form.Select>
+                    </Form.Group>
+                  </Col>
+                </Row>
+                <Row className="mt-3">
+                  <Col md={3}>
+                    <Form.Group>
+                      <Form.Label>Status</Form.Label>
+                      <Form.Select
+                        name="permitStatus"
+                        value={filters.permitStatus}
+                        onChange={handleFilterChange}
+                      >
+                        <option value="">All Statuses</option>
+                        {statusOptions.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </Form.Select>
+                    </Form.Group>
+                  </Col>
+                  <Col md={3}>
+                    <Form.Group>
+                      <Form.Label>From Date</Form.Label>
+                      <DatePicker
+                        selected={filters.fromDate}
+                        onChange={(date) => handleDateChange(date, 'fromDate')}
+                        className="form-control"
+                        placeholderText="Select start date"
+                        dateFormat="dd/MM/yyyy"
+                        isClearable
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col md={3}>
+                    <Form.Group>
+                      <Form.Label>To Date</Form.Label>
+                      <DatePicker
+                        selected={filters.toDate}
+                        onChange={(date) => handleDateChange(date, 'toDate')}
+                        className="form-control"
+                        placeholderText="Select end date"
+                        dateFormat="dd/MM/yyyy"
+                        isClearable
+                        minDate={filters.fromDate}
+                      />
+                    </Form.Group>
+                  </Col>
+                </Row>
+              </Card>
+            )}
+
+            {filteredPermits.length === 0 ? (
+              <Alert variant="info" className="text-center">
+                No permits found matching your criteria
+              </Alert>
+            ) : (
+              <>
+                <div className="table-responsive">
+                  <Table striped bordered hover className="align-middle">
+                    <thead className="table-light">
+                      <tr>
+                        <th onClick={() => handleSort('permitNumber')} style={{ cursor: 'pointer' }}>
+                          Permit Number {sortConfig.key === 'permitNumber' && (
+                            sortConfig.direction === 'asc' ? '↑' : '↓'
+                          )}
+                        </th>
+                        <th onClick={() => handleSort('permitType')} style={{ cursor: 'pointer' }}>
+                          Type {sortConfig.key === 'permitType' && (
+                            sortConfig.direction === 'asc' ? '↑' : '↓'
+                          )}
+                        </th>
+                        <th onClick={() => handleSort('permitStatus')} style={{ cursor: 'pointer' }}>
+                          Status {sortConfig.key === 'permitStatus' && (
+                            sortConfig.direction === 'asc' ? '↑' : '↓'
+                          )}
+                        </th>
+                        <th>Current Level</th>
+                        <th>Approval Progress</th>
+                        <th onClick={() => handleSort('issueDate')} style={{ cursor: 'pointer' }}>
+                          Issued {sortConfig.key === 'issueDate' && (
+                            sortConfig.direction === 'asc' ? '↑' : '↓'
+                          )}
+                        </th>
+                        <th onClick={() => handleSort('expiryDate')} style={{ cursor: 'pointer' }}>
+                          Expires {sortConfig.key === 'expiryDate' && (
+                            sortConfig.direction === 'asc' ? '↑' : '↓'
+                          )}
+                        </th>
+                        <th onClick={() => handleSort('employeeName')} style={{ cursor: 'pointer' }}>
+                          Employee {sortConfig.key === 'employeeName' && (
+                            sortConfig.direction === 'asc' ? '↑' : '↓'
+                          )}
+                        </th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentPermits.map((permit) => (
+                        <tr key={permit._id}>
+                          <td>
+                            <div className="fw-semibold">{permit.permitNumber}</div>
+                            <div className="text-muted small">{permit.poNumber}</div>
+                          </td>
+                          <td>{permit.permitType}</td>
+                          <td>{getStatusBadge(permit.permitStatus)}</td>
+                          <td className="text-center">Level {permit.currentLevel}</td>
+                          <td>
+                            <div className="d-flex align-items-center">
+                              {Array.from({ length: 4 }, (_, i) => (
+                                <div 
+                                  key={i} 
+                                  className={`me-1 ${permit.currentLevel > i + 1 ? 'text-success' : 'text-muted'}`}
+                                >
+                                  {i + 1}
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                          <td>{new Date(permit.issueDate).toLocaleDateString()}</td>
+                          <td>{new Date(permit.expiryDate).toLocaleDateString()}</td>
+                          <td>{permit.employeeName}</td>
+                          <td>
+                            {renderActionButtons(permit)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="d-flex justify-content-center mt-4">
+                    <Pagination>
+                      <Pagination.First 
+                        onClick={() => setCurrentPage(1)} 
+                        disabled={currentPage === 1} 
+                      />
+                      <Pagination.Prev 
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                        disabled={currentPage === 1} 
+                      />
+                      
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <Pagination.Item
+                            key={pageNum}
+                            active={pageNum === currentPage}
+                            onClick={() => setCurrentPage(pageNum)}
+                          >
+                            {pageNum}
+                          </Pagination.Item>
+                        );
+                      })}
+                      
+                      <Pagination.Next 
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                        disabled={currentPage === totalPages} 
+                      />
+                      <Pagination.Last 
+                        onClick={() => setCurrentPage(totalPages)} 
+                        disabled={currentPage === totalPages} 
+                      />
+                    </Pagination>
+                  </div>
+                )}
+
+                <div className="text-muted text-center mt-2">
+                  Showing {indexOfFirstPermit + 1} to {Math.min(indexOfLastPermit, filteredPermits.length)} of {filteredPermits.length} permits
+                </div>
+              </>
+            )}
+          </Tab>
+          <Tab eventKey="pending" title="My Pending Approvals">
+            {pendingPermits.length === 0 ? (
+              <Alert variant="info" className="text-center">
+                No pending permits requiring your approval
+              </Alert>
+            ) : (
+              <Table striped bordered hover>
+                <thead>
                   <tr>
-                    <th onClick={() => handleSort('permitNumber')} style={{ cursor: 'pointer' }}>
-                      Permit Number {sortConfig.key === 'permitNumber' && (
-                        sortConfig.direction === 'asc' ? '↑' : '↓'
-                      )}
-                    </th>
-                    <th onClick={() => handleSort('permitType')} style={{ cursor: 'pointer' }}>
-                      Type {sortConfig.key === 'permitType' && (
-                        sortConfig.direction === 'asc' ? '↑' : '↓'
-                      )}
-                    </th>
-                    <th onClick={() => handleSort('permitStatus')} style={{ cursor: 'pointer' }}>
-                      Status {sortConfig.key === 'permitStatus' && (
-                        sortConfig.direction === 'asc' ? '↑' : '↓'
-                      )}
-                    </th>
+                    <th>Permit Number</th>
+                    <th>Type</th>
+                    <th>Issued</th>
+                    <th>Employee</th>
                     <th>Current Level</th>
-                    <th onClick={() => handleSort('issueDate')} style={{ cursor: 'pointer' }}>
-                      Issued {sortConfig.key === 'issueDate' && (
-                        sortConfig.direction === 'asc' ? '↑' : '↓'
-                      )}
-                    </th>
-                    <th onClick={() => handleSort('expiryDate')} style={{ cursor: 'pointer' }}>
-                      Expires {sortConfig.key === 'expiryDate' && (
-                        sortConfig.direction === 'asc' ? '↑' : '↓'
-                      )}
-                    </th>
-                    <th onClick={() => handleSort('employeeName')} style={{ cursor: 'pointer' }}>
-                      Employee {sortConfig.key === 'employeeName' && (
-                        sortConfig.direction === 'asc' ? '↑' : '↓'
-                      )}
-                    </th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {currentPermits.map((permit) => (
+                  {pendingPermits.map(permit => (
                     <tr key={permit._id}>
-                      <td>
-                        <div className="fw-semibold">{permit.permitNumber}</div>
-                        <div className="text-muted small">{permit.poNumber}</div>
-                      </td>
+                      <td>{permit.permitNumber}</td>
                       <td>{permit.permitType}</td>
-                      <td>{getStatusBadge(permit.permitStatus)}</td>
-                      <td className="text-center">Level {permit.currentLevel}</td>
                       <td>{new Date(permit.issueDate).toLocaleDateString()}</td>
-                      <td>{new Date(permit.expiryDate).toLocaleDateString()}</td>
                       <td>{permit.employeeName}</td>
+                      <td className="text-center">Level {permit.currentLevel}</td>
                       <td>
                         <div className="d-flex gap-2 justify-content-center">
                           <Button
-                            variant="outline-primary"
+                            variant="success"
                             size="sm"
-                            onClick={() => handleEditClick(permit)}
-                            disabled={actionLoading !== null}
-                            title="Edit permit"
+                            onClick={() => handleApprove(permit._id, permit.currentLevel)}
+                            disabled={actionLoading === `approve-${permit._id}`}
                           >
-                            <FiEdit2 />
-                          </Button>
-                          
-                          {canTakeAction(permit) && (
-                            <>
-                              <Button
-                                variant="outline-success"
-                                size="sm"
-                                onClick={() => handleApprove(permit._id)}
-                                disabled={actionLoading === `approve-${permit._id}`}
-                                title="Approve permit"
-                              >
-                                {actionLoading === `approve-${permit._id}` ? (
-                                  <Spinner size="sm" />
-                                ) : (
-                                  <FiCheck />
-                                )}
-                              </Button>
-                              <Button
-                                variant="outline-warning"
-                                size="sm"
-                                onClick={() => handleReturn(permit._id)}
-                                disabled={actionLoading === `return-${permit._id}`}
-                                title="Return for corrections"
-                              >
-                                {actionLoading === `return-${permit._id}` ? (
-                                  <Spinner size="sm" />
-                                ) : (
-                                  <FiCornerUpLeft />
-                                )}
-                              </Button>
-                            </>
-                          )}
-                          
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            onClick={() => handleDelete(permit._id)}
-                            disabled={actionLoading === `delete-${permit._id}`}
-                            title="Delete permit"
-                          >
-                            {actionLoading === `delete-${permit._id}` ? (
+                            {actionLoading === `approve-${permit._id}` ? (
                               <Spinner size="sm" />
                             ) : (
-                              <FiTrash2 />
+                              <>
+                                <FiCheck className="me-1" /> Approve
+                              </>
                             )}
+                          </Button>
+                          <Button
+                            variant="warning"
+                            size="sm"
+                            onClick={() => handleReturn(permit._id)}
+                            disabled={actionLoading === `return-${permit._id}`}
+                          >
+                            {actionLoading === `return-${permit._id}` ? (
+                              <Spinner size="sm" />
+                            ) : (
+                              <>
+                                <FiCornerUpLeft className="me-1" /> Return
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="info"
+                            size="sm"
+                            onClick={() => handleViewDetails(permit)}
+                          >
+                            <FiEye className="me-1" /> Details
                           </Button>
                         </div>
                       </td>
@@ -528,60 +794,9 @@ const PermitsTable = () => {
                   ))}
                 </tbody>
               </Table>
-            </div>
-
-            {totalPages > 1 && (
-              <div className="d-flex justify-content-center mt-4">
-                <Pagination>
-                  <Pagination.First 
-                    onClick={() => setCurrentPage(1)} 
-                    disabled={currentPage === 1} 
-                  />
-                  <Pagination.Prev 
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
-                    disabled={currentPage === 1} 
-                  />
-                  
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-                    
-                    return (
-                      <Pagination.Item
-                        key={pageNum}
-                        active={pageNum === currentPage}
-                        onClick={() => setCurrentPage(pageNum)}
-                      >
-                        {pageNum}
-                      </Pagination.Item>
-                    );
-                  })}
-                  
-                  <Pagination.Next 
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
-                    disabled={currentPage === totalPages} 
-                  />
-                  <Pagination.Last 
-                    onClick={() => setCurrentPage(totalPages)} 
-                    disabled={currentPage === totalPages} 
-                  />
-                </Pagination>
-              </div>
             )}
-
-            <div className="text-muted text-center mt-2">
-              Showing {indexOfFirstPermit + 1} to {Math.min(indexOfLastPermit, filteredPermits.length)} of {filteredPermits.length} permits
-            </div>
-          </>
-        )}
+          </Tab>
+        </Tabs>
       </Card>
 
       <Modal show={showEditModal} onHide={handleModalClose} size="lg" centered>
@@ -597,6 +812,20 @@ const PermitsTable = () => {
             isSubmitting={actionLoading === 'updating'}
           />
         </Modal.Body>
+      </Modal>
+
+      <Modal show={showDetailsModal} onHide={handleModalClose} size="lg" centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Permit Details</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {selectedPermit && <PermitDetails permit={selectedPermit} />}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={handleModalClose}>
+            Close
+          </Button>
+        </Modal.Footer>
       </Modal>
     </>
   );

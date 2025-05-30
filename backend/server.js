@@ -9,15 +9,13 @@ const appRoute = require("./routes/appRoute");
 const app = express();
 dotenv.config();
 const PORT = process.env.PORT || 7000;
-
 const allowedOrigins = [
-  "https://e-jvd5fee8u-rahul-kumar-mahtos-projects.vercel.app",
   "https://e-ptw-nine.vercel.app",
-  "http://localhost:5000", // for local dev
+ "http://localhost:5173" // for local dev
 ];
 // CORS configuration
 const corsOptions = {
- origin: function (origin, callback) {
+  origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {

@@ -4,8 +4,8 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 // Use the local MongoDB connection string
-//const mongoURL = process.env.MONGO_URL_LOCAL;
-const mongoURL = process.env.MONGO_URL_ATLAS;
+const mongoURL = process.env.MONGO_URL_LOCAL;
+//const mongoURL = process.env.MONGO_URL_ATLAS;
 
 if (!mongoURL) {
   console.error("MongoDB LOCAL URL connection is missing.");

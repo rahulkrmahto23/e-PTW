@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Container, Row, Col, Image, Button } from 'react-bootstrap';
 import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '../assets/logo.jpeg';
-import { logoutUser } from '../helpers/user-api';
-import toast from 'react-hot-toast'; // 🔥 import toast
+import { logoutUser, verifyUser } from '../helpers/user-api';
+import toast from 'react-hot-toast';
 
 const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [currentUser, setCurrentUser] = useState(null);
   
   const headerStyle = {
     background: 'linear-gradient(to right, #0f1d4c, #002366)',
@@ -24,14 +25,30 @@ const Header = () => {
   const isHomePage = location.pathname === '/';
   const isAuthPage = location.pathname === '/login' || location.pathname === '/signup';
 
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { user } = await verifyUser();
+        setCurrentUser(user);
+      } catch (error) {
+        setCurrentUser(null);
+      }
+    };
+    
+    if (!isAuthPage && !isHomePage) {
+      checkAuth();
+    }
+  }, [location, isAuthPage, isHomePage]);
+
   const handleLogout = async () => {
     try {
       const response = await logoutUser();
+      setCurrentUser(null);
       navigate('/');
-      toast.success(response.message || 'Logged out successfully'); // ✅ toast instead of alert
+      toast.success(response.message || 'Logged out successfully');
     } catch (error) {
       console.error('Logout failed:', error.message);
-      toast.error(error.message || 'Logout failed. Please try again.'); // ✅ error toast
+      toast.error(error.message || 'Logout failed. Please try again.');
     }
   };
 
@@ -62,7 +79,12 @@ const Header = () => {
                   Designed by Venkatpati Raju, Assistant Manager (Safety), 9407981839
                 </div>
               </div>
-              <div style={{ marginLeft: '15px' }}>
+              <div style={{ marginLeft: '15px', display: 'flex', alignItems: 'center' }}>
+                {currentUser && (
+                  <span style={{ marginRight: '10px' }}>
+                    Welcome, {currentUser.name}
+                  </span>
+                )}
                 {isHomePage && (
                   <>
                     <Button 
