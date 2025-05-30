@@ -7,6 +7,11 @@ const createToken = (id, email, role, level, expiresIn = "7d") => {
 };
 
 const verifyToken = async (req, res, next) => {
+  // Skip token verification for OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+
   const token = req.signedCookies[COOKIE_NAME];
   if (!token) {
     return res.status(401).json({
@@ -23,7 +28,7 @@ const verifyToken = async (req, res, next) => {
       });
     }
     res.locals.jwtData = decoded;
-    req.user = decoded; // Make user data available in req.user
+    req.user = decoded;
     next();
   });
 };

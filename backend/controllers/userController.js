@@ -49,8 +49,9 @@ exports.userSignup = async (req, res) => {
       httpOnly: true,
       signed: true,
       expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       secure: process.env.NODE_ENV === "production",
+      domain: process.env.NODE_ENV === "production" ? ".vercel.app" : undefined,
     });
 
     return res.status(201).json({
@@ -99,8 +100,9 @@ exports.userLogin = async (req, res) => {
       httpOnly: true,
       signed: true,
       expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       secure: process.env.NODE_ENV === "production",
+      domain: process.env.NODE_ENV === "production" ? ".vercel.app" : undefined,
     });
 
     return res.status(200).json({

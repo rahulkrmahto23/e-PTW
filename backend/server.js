@@ -9,21 +9,25 @@ const appRoute = require("./routes/appRoute");
 const app = express();
 dotenv.config();
 const PORT = process.env.PORT || 7000;
+
 const allowedOrigins = [
   "https://e-ptw-nine.vercel.app",
- "http://localhost:5173" // for local dev
+  "http://localhost:5173",
 ];
-// CORS configuration
+
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
     }
   },
+  credentials: true, // This is important for cookies
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
-  credentials: true, // Required for cookies/session
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
