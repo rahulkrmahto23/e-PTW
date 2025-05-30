@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const apiClient = axios.create({
-  baseURL: "http://e-ptw-nine.vercel.app/api/v1/user" , // <-- Fixed this line
+  baseURL: "http://e-ptw-17wr.vercel.app/api/v1/user" , // <-- Fixed this line
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
