@@ -1,149 +1,153 @@
 import axios from "axios";
 
-const apiClient = axios.create({
-  baseURL: "https://e-ptw-17wr.vercel.app/api/v1/permits", // ✅ use HTTPS
-  headers: { "Content-Type": "application/json" },
+const permitApiClient = axios.create({
+  baseURL: "https://e-ptw-17wr.vercel.app/api/v1/permits",
+  headers: { 
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+  },
   withCredentials: true,
 });
 
+// Request interceptor to add token if available
+permitApiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
 
-
-// Helper function to handle errors consistently
-const handleError = (error) => {
-  console.error("API Error:", error.response?.data || error);
-  throw new Error(error.response?.data?.message || "An unexpected error occurred");
-};
+// Response interceptor to handle errors globally
+permitApiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Handle unauthorized (e.g., redirect to login)
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const createPermit = async (permitData) => {
   try {
-    const res = await apiClient.post("/", permitData);
+    const response = await permitApiClient.post("/", permitData);
     return {
       success: true,
-      message: res.data.message,
-      permit: res.data.permit,
+      ...response.data
     };
   } catch (error) {
-    return handleError(error);
+    throw new Error(error.response?.data?.message || "Failed to create permit.");
   }
 };
 
 export const getAllPermits = async () => {
   try {
-    const res = await apiClient.get("/");
+    const response = await permitApiClient.get("/");
     return {
       success: true,
-      message: res.data.message,
-      permits: res.data.permits,
+      ...response.data
     };
   } catch (error) {
-    return handleError(error);
+    throw new Error(error.response?.data?.message || "Failed to fetch permits.");
   }
 };
 
 export const approvePermit = async (permitId) => {
   try {
-    const res = await apiClient.get(`/approve/${permitId}`);
+    const response = await permitApiClient.post(`/${permitId}/approve`);
     return {
       success: true,
-      message: res.data.message,
-      approvedBy: res.data.approvedBy,
-      currentLevel: res.data.currentLevel,
-      permitStatus: res.data.permitStatus,
+      ...response.data
     };
   } catch (error) {
-    return handleError(error);
+    throw new Error(error.response?.data?.message || "Failed to approve permit.");
   }
 };
 
 export const returnPermit = async (permitId, requiredChanges) => {
   try {
-    const res = await apiClient.put(`/return/${permitId}`, { requiredChanges });
+    const response = await permitApiClient.post(`/${permitId}/return`, { requiredChanges });
     return {
       success: true,
-      message: res.data.message,
-      permit: res.data.permit,
+      ...response.data
     };
   } catch (error) {
-    return handleError(error);
+    throw new Error(error.response?.data?.message || "Failed to return permit.");
   }
 };
 
 export const editPermitDetails = async (permitId, updates) => {
   try {
-    const res = await apiClient.put(`/edit/${permitId}`, updates);
+    const response = await permitApiClient.put(`/${permitId}`, updates);
     return {
       success: true,
-      message: res.data.message,
-      permit: res.data.permit,
+      ...response.data
     };
   } catch (error) {
-    return handleError(error);
+    throw new Error(error.response?.data?.message || "Failed to update permit.");
   }
 };
 
 export const searchPermits = async (searchParams) => {
   try {
-    const res = await apiClient.get("/search", { params: searchParams });
+    const response = await permitApiClient.get("/search", { params: searchParams });
     return {
       success: true,
-      message: res.data.message,
-      count: res.data.count,
-      permits: res.data.permits,
+      ...response.data
     };
   } catch (error) {
-    return handleError(error);
+    throw new Error(error.response?.data?.message || "Search failed.");
   }
 };
 
 export const deletePermit = async (permitId) => {
   try {
-    const res = await apiClient.delete(`/delete/${permitId}`);
+    const response = await permitApiClient.delete(`/${permitId}`);
     return {
       success: true,
-      message: res.data.message,
+      ...response.data
     };
   } catch (error) {
-    return handleError(error);
+    throw new Error(error.response?.data?.message || "Failed to delete permit.");
   }
 };
 
-// Get a specific permit by ID
 export const getPermitById = async (permitId) => {
   try {
-    const res = await apiClient.get(`/${permitId}`);
+    const response = await permitApiClient.get(`/${permitId}`);
     return {
       success: true,
-      message: res.data.message,
-      permit: res.data.permit,
+      ...response.data
     };
   } catch (error) {
-    return handleError(error);
+    throw new Error(error.response?.data?.message || "Failed to fetch permit details.");
   }
 };
 
-// Get pending permits for the current user's level
 export const getPendingPermits = async () => {
   try {
-    const res = await apiClient.get("/pending/user");
+    const response = await permitApiClient.get("/pending");
     return {
       success: true,
-      message: res.data.message,
-      count: res.data.count,
-      permits: res.data.permits,
+      ...response.data
     };
   } catch (error) {
-    return handleError(error);
+    throw new Error(error.response?.data?.message || "Failed to fetch pending permits.");
   }
 };
 
-// Additional utility functions
-export const getPermitStatusOptions = () => {
-  return [
-    { value: "Pending", label: "Pending" },
-    { value: "Approved", label: "Approved" },
-    { value: "Returned", label: "Returned" },
-  ];
-};
+// Utility functions remain the same
+export const getPermitStatusOptions = () => [
+  { value: "Pending", label: "Pending" },
+  { value: "Approved", label: "Approved" },
+  { value: "Returned", label: "Returned" },
+];
 
 export const getPermitTypeOptions = () => [
   { value: "General", label: "General Permit" },
@@ -154,11 +158,9 @@ export const getPermitTypeOptions = () => [
   { value: "Hot", label: "Hot Work Permit" }
 ];
 
-export const getLevelOptions = () => {
-  return [
-    { value: 1, label: "Level 1 (Final Approver)" },
-    { value: 2, label: "Level 2" },
-    { value: 3, label: "Level 3" },
-    { value: 4, label: "Level 4 (Creator)" },
-  ];
-};
+export const getLevelOptions = () => [
+  { value: 1, label: "Level 1 (Final Approver)" },
+  { value: 2, label: "Level 2" },
+  { value: 3, label: "Level 3" },
+  { value: 4, label: "Level 4 (Creator)" },
+];
