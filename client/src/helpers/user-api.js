@@ -1,94 +1,84 @@
 import axios from "axios";
 
-const userApiClient = axios.create({
-  baseURL: "https://e-ptw-17wr.vercel.app/api/v1/user",
-  headers: { 
-    "Content-Type": "application/json",
-    "Accept": "application/json"
-  },
+const apiClient = axios.create({
+  baseURL: "https://e-ptw-17wr.vercel.app/api/v1/user", // ✅ use HTTPS
+  headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
 
-// Request interceptor to add token if available
-userApiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-}, (error) => {
-  return Promise.reject(error);
-});
-
-// Response interceptor to handle errors globally
-userApiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized (e.g., redirect to login)
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
-    }
-    return Promise.reject(error);
-  }
-);
 
 export const loginUser = async (email, password) => {
   try {
-    const response = await userApiClient.post("/login", { email, password });
-    // Store token if returned in response
-    if (response.data.token) {
-      localStorage.setItem('token', response.data.token);
-    }
+    const res = await apiClient.post("/login", { email, password });
     return {
       success: true,
-      ...response.data
+      message: res.data.message,
+      user: {
+        name: res.data.name,
+        email: res.data.email,
+        role: res.data.role,
+        level: res.data.level,
+      },
     };
   } catch (error) {
-    throw new Error(error.response?.data?.message || "Login failed. Please try again.");
+    console.error("API Error:", error.response?.data || error);
+    throw new Error(error.response?.data?.message || "Unable to login");
   }
 };
 
-export const signupUser = async (name, email, password, role = "CLIENT", level = 4) => {
+export const signupUser = async (
+  name,
+  email,
+  password,
+  role = "CLIENT",
+  level = 4
+) => {
   try {
-    const response = await userApiClient.post("/signup", { 
-      name, 
-      email, 
-      password, 
-      role, 
-      level 
+    const res = await apiClient.post("/signup", {
+      name,
+      email,
+      password,
+      role,
+      level,
     });
     return {
       success: true,
-      ...response.data
+      message: res.data.message,
+      user: {
+        name: res.data.name,
+        email: res.data.email,
+        role: res.data.role,
+        level: res.data.level,
+      },
     };
   } catch (error) {
-    throw new Error(error.response?.data?.message || "Registration failed. Please try again.");
+    throw new Error(error.response?.data?.message || "Unable to signup");
   }
 };
 
 export const logoutUser = async () => {
   try {
-    const response = await userApiClient.get("/logout");
-    localStorage.removeItem('token');
-    return {
-      success: true,
-      ...response.data
-    };
+    const res = await apiClient.get("/logout");
+    return res.data;
   } catch (error) {
-    throw new Error(error.response?.data?.message || "Logout failed. Please try again.");
+    throw new Error(error.response?.data?.message || "Unable to logout");
   }
 };
 
 export const verifyUser = async () => {
   try {
-    const response = await userApiClient.get("/verify");
+    const res = await apiClient.get("/verify");
     return {
       success: true,
-      ...response.data
+      message: res.data.message,
+      user: {
+        name: res.data.name,
+        email: res.data.email,
+        role: res.data.role,
+        level: res.data.level,
+      },
     };
   } catch (error) {
-    throw new Error(error.response?.data?.message || "Session verification failed.");
+    throw new Error(error.response?.data?.message || "Unable to verify user");
   }
 };
