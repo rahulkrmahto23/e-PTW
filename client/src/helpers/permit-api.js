@@ -1,7 +1,11 @@
 import axios from "axios";
 
+const isLocalhost = window.location.hostname === "localhost";
+
 const apiClient = axios.create({
-  baseURL: "https://e-ptw-17wr.vercel.app/api/v1/permits", // ✅ use HTTPS
+  baseURL: isLocalhost
+    ? "http://localhost:5000/api/v1/permits"
+    : "https://e-ptw-17wr.vercel.app/api/v1/permits",
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
